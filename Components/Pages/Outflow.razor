@@ -1,0 +1,384 @@
+﻿@page "/outflow"
+
+@using Mero_Kharcha.Models;
+@using Mero_Kharcha.Services;
+@inject ITransactionServices TransactionServices;
+@inject IUserServices UserServices;
+@inject IDebtServices DebtServices;
+@inject NavigationManager navigationManager;
+
+<div class="outflow-balance">
+    <h3 style="margin-bottom: 22px;">Outflow Overview</h3>
+
+    <MudGrid Justify="Justify.Center"  Spacing="20">
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label" Align="Align.Center">Total Outflows</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Align="Align.Center" Style="color: #D62A20; font-weight: bold; font-size: 28px;">@userSelectedCurrency @totalOutflowAmount</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label" Align="Align.Center">Available Balance</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Align="Align.Center" Style="font-weight: bold; font-size: 28px;">@userSelectedCurrency @availableBalance</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<div class="add-outflow">
+    <h3>Add outflow (Expense)</h3>
+    <form>
+        <div>
+            <label>Title</label>
+            <input type="text" @bind="outflowTransaction.TransTitle" />
+        </div>
+        <div>
+            <label>Amount</label>
+            <input type="text" @bind="outflowTransaction.TransAmount" />
+        </div>
+        @if (!string.IsNullOrEmpty(balanceErrorMessage))
+        {
+            <p style="color: red; margin-bottom: 0; font-weight:500;">@balanceErrorMessage</p>
+        }
+        <div>
+            <label>Date</label>
+            <input type="date" @bind="outflowTransaction.TransDate" min="2024-01-01" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+        </div>
+        <div>
+            <label>Tag</label>
+            <select @bind="outflowTransaction.TransTag">
+                <option value="--">--</option>
+                <option value="Yearly">Yearly</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Food">Food</option>
+                <option value="Drinks">Drinks</option>
+                <option value="Clothes">Clothes</option>
+                <option value="Gadgets">Gadgets</option>
+                <option value="Fuel">Fuel</option>
+                <option value="Rent">Rent</option>
+                <option value="EMI">EMI</option>
+                <option value="Party">Party</option>
+                <option value="Miscellaneous">Miscellaneous</option>
+                <option value="CustomTag">Custom tag</option>
+            </select>
+        </div>
+        <div style="@(outflowTransaction.TransTag == "CustomTag" ? "display: flex; align-items: center; justify-content: space-between;" : "display:none;")">
+            <label>Custom tag</label>
+            <input type="text" placeholder="Enter custom tag" @bind="customTag" />
+        </div>
+        <div>
+            <label>Notes:</label>
+            <textarea placeholder="Enter notes here" @bind="outflowTransaction.TransNote"></textarea>
+        </div>
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <p style="color: red; margin-bottom: 0; font-weight:500;">@errorMessage*</p>
+        }
+        <button type="button" class="add-outflow-btn" @onclick="AddOutflow">Add outflow</button>
+    </form>
+</div>
+
+
+<div class="filter">
+    <h3>All outflows</h3>
+    <input type="search" placeholder="Search outflows by title" @oninput="UpdateSearchText" @onkeydown="HandleKeyPress" />
+
+    <select @onchange="ApplySort">
+        <option value="Sortby">Sort by (Default)</option>
+        <option value="Date">Date (Old to New)</option>
+        <option value="Amount">Amount (Highest to Lowest)</option>
+    </select>
+
+    <select @onchange="TagFilter">
+        <option value="TagFilter" disabled selected>Filter by tag</option>
+        <option value="None">None</option>
+        <option value="Yearly">Yearly</option>
+        <option value="Monthly">Monthly</option>
+        <option value="Food">Food</option>
+        <option value="Drinks">Drinks</option>
+        <option value="Clothes">Clothes</option>
+        <option value="Gadgets">Gadgets</option>
+        <option value="Fuel">Fuel</option>
+        <option value="Rent">Rent</option>
+        <option value="EMI">EMI</option>
+        <option value="Party">Party</option>
+        <option value="Miscellaneous">Miscellaneous</option>
+    </select>
+
+    <MudButton OnClick="ToggleFilterPopover" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterList" Style="padding: 10px 0 8px 0; width: 10%;">Filter</MudButton>
+    <MudPopover @bind-Open="isPopoverOpen" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+        <MudPaper Class="p-4">
+            <MudDatePicker Label="Start Date" Margin="Margin.Normal" @bind-Date="startDate" />
+            <MudDatePicker Label="End Date" Margin="Margin.Normal" @bind-Date="endDate" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick="ApplyDateRangeFilter">Apply Filter</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" @onclick="ClearFilter">Clear Filter</MudButton>
+        </MudPaper>
+    </MudPopover>
+</div>
+
+<div class="outflow-table">
+    <MudSimpleTable Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                @foreach (var h in tableTitle)
+                {
+                    <th>@h</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (filteredOutflowData != null && filteredOutflowData.Any())
+            {
+                @foreach (var rows in filteredOutflowData)
+                {
+                    <tr>
+                        <td>@rows.TransDate.ToShortDateString()</td>
+                        <td>@rows.TransTitle</td>
+                        <td>@rows.TransAmount</td>
+                        <td>@rows.TransTag</td>
+                        <td>@rows.TransNote</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5">No data available</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</div>
+
+@code {
+    string[] tableTitle = { "Date", "Title", "Outflow Amount", "Tag", "Notes" };
+    private Transaction outflowTransaction = new Transaction();
+    private List<Transaction> outflowTransactionsData = new List<Transaction>(); // Store transactions
+    private List<Transaction> filteredOutflowData = new List<Transaction>();
+
+    private string userSelectedCurrency;
+    private decimal totalOutflowAmount = 0;
+    private decimal totalInflowAmount = 0;
+    private decimal availableBalance = 0;
+    private decimal totalDebtAmount = 0;
+    private decimal totalPendingAmount = 0;
+    private decimal totalClearedAmount = 0;
+    private string searchText = "";
+    private string customTag = "";
+    private string errorMessage = string.Empty;
+    private string balanceErrorMessage = string.Empty;
+    private bool isPopoverOpen = false;
+    private string selectedSortOption = "Sortby"; // Default value
+    private string selectedTagFilter = "TagFilter"; // Default value
+
+
+
+    private DateTime? startDate = null;
+    private DateTime? endDate = null;
+
+
+    private void ToggleFilterPopover()
+    {
+        isPopoverOpen = !isPopoverOpen;
+    }
+
+
+    private async Task AddOutflow()
+    {
+        errorMessage = string.Empty;
+        balanceErrorMessage = string.Empty;
+
+        if (string.IsNullOrEmpty(outflowTransaction.TransTitle) || string.IsNullOrEmpty(outflowTransaction.TransAmount) || string.IsNullOrEmpty(outflowTransaction.TransDate.ToString()) || string.IsNullOrEmpty(outflowTransaction.TransTag) || outflowTransaction.TransTag == "--" || outflowTransaction.TransTag == "CustomTag" && string.IsNullOrEmpty(customTag))
+        {
+            errorMessage = "Please fill out all the fields.";
+            return;
+        }
+
+        if (!decimal.TryParse(outflowTransaction.TransAmount, out decimal transAmount) || Convert.ToDecimal(outflowTransaction.TransAmount) <= 0)
+        {
+            errorMessage = "Please enter a valid amount";
+            return;
+        }
+
+        if (outflowTransaction.TransTag == "CustomTag" && !string.IsNullOrEmpty(customTag))
+        {
+            outflowTransaction.TransTag = customTag; // Assign custom tag to TransTag
+        }
+
+        decimal outflowAmount = Convert.ToDecimal(outflowTransaction.TransAmount);
+
+        if (outflowAmount > availableBalance)
+        {
+            balanceErrorMessage = $"You don't have enough balance to add this outflow. Current balance: {userSelectedCurrency} {availableBalance}.";
+            return;
+        }
+
+        try
+        {
+            availableBalance -= outflowAmount;
+            outflowTransaction.TransType = "Outflow";
+
+            await TransactionServices.AddTransactionAsync(outflowTransaction);
+            outflowTransactionsData = (await TransactionServices.RetrieveTransactionAsync()).Where(outflowTransaction => outflowTransaction.TransType == "Outflow").OrderByDescending(outflowTransaction => outflowTransaction.TransID).ToList();
+            totalOutflowAmount = await TransactionServices.GetTotalOutflowAsync();
+            //outflowTransactionsData.Where(outflowTransaction => outflowTransaction.TransType == "Outflow").Sum(outflowTransaction => Convert.ToDecimal(outflowTransaction.TransAmount)); //Changing the total outflow balance immediately after new outflow is added
+            filteredOutflowData = new List<Transaction>(outflowTransactionsData);
+            outflowTransaction = new Transaction(); // Reset form
+            customTag = "";
+            outflowTransaction.TransDate = DateTime.Today;
+        }
+        catch (Exception ex)
+        {
+            // Handle error (e.g., show a message to the user)
+            errorMessage = $"Error while adding outflow: {ex.Message}";
+            Console.WriteLine(errorMessage); // Log for debugging
+        }
+    }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            outflowTransaction.TransDate = DateTime.Today;
+            var outflowTransactions = await TransactionServices.RetrieveTransactionAsync();
+            var userDetails = await UserServices.RetrieveUsersAsync();
+            userSelectedCurrency = userDetails[0].Currency;
+            totalInflowAmount = await TransactionServices.GetTotalInflowAsync();
+            totalOutflowAmount = await TransactionServices.GetTotalOutflowAsync();
+            totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+            totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+            totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+
+            availableBalance = (totalInflowAmount - totalOutflowAmount - totalClearedAmount) + totalPendingAmount;
+
+
+            outflowTransactionsData = outflowTransactions.Where(outflowTransactions => outflowTransactions.TransType == "Outflow").OrderByDescending(outflowTransactions => outflowTransactions.TransID).ToList();
+            filteredOutflowData = new List<Transaction>(outflowTransactionsData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error while retrieving the transactions: {ex.Message}");
+        }
+
+    }
+
+
+    //Search filter methods:
+    private void HandleKeyPress(KeyboardEventArgs e) //Detects enter key pressed
+    {
+        if (e.Key == "Enter")
+        {
+            ApplySearch();
+        }
+    }
+
+    private void UpdateSearchText(ChangeEventArgs e) //Updates the search text
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ApplySearch() //Search filter method to search for transaction based on the title
+    {
+        filteredOutflowData = outflowTransactionsData.Where(t => string.IsNullOrEmpty(searchText) || t.TransTitle.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private void ApplySort(ChangeEventArgs e)
+    {
+        selectedSortOption = e.Value?.ToString() ?? "Sortby";
+
+        if (selectedSortOption == "Sortby")
+        {
+            // Reset to the original data without sorting
+            filteredOutflowData = new List<Transaction>(outflowTransactionsData);
+        }
+        else if (selectedSortOption == "Amount")
+        {
+            filteredOutflowData = filteredOutflowData.OrderByDescending(t => Convert.ToDecimal(t.TransAmount)).ToList(); // Sorting by amount (highest to lowest)
+        }
+        else if (selectedSortOption == "Date")
+        {
+            filteredOutflowData = filteredOutflowData.OrderBy(t => t.TransDate).ToList(); // Sorting by date (old to new)
+        }
+    }
+
+    private void TagFilter(ChangeEventArgs e)
+    {
+        selectedTagFilter = e.Value?.ToString() ?? "TagFilter";
+
+        if (selectedTagFilter == "None")
+        {
+            // Reset to the original data without filtering
+            filteredOutflowData = new List<Transaction>(outflowTransactionsData);
+        }
+        else if (selectedTagFilter == "Yearly")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Yearly").ToList();
+        }
+        else if (selectedTagFilter == "Monthly")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Monthly").ToList();
+        }
+        else if (selectedTagFilter == "Food")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Food").ToList();
+        }
+        else if (selectedTagFilter == "Drinks")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Drinks").ToList();
+        }
+        else if (selectedTagFilter == "Clothes")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Clothes").ToList();
+        }
+        else if (selectedTagFilter == "Gadgets")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Gadgets").ToList();
+        }
+        else if (selectedTagFilter == "Fuel")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Fuel").ToList();
+        }
+        else if (selectedTagFilter == "Rent")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Rent").ToList();
+        }
+        else if (selectedTagFilter == "EMI")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "EMI").ToList();
+        }
+        else if (selectedTagFilter == "Party")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Party").ToList();
+        }
+        else if (selectedTagFilter == "Miscellaneous")
+        {
+            filteredOutflowData = filteredOutflowData.Where(t => t.TransTag == "Miscellaneous").ToList();
+        }
+    }
+
+    private void ApplyDateRangeFilter()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            filteredOutflowData = outflowTransactionsData.Where(t => t.TransDate >= startDate.Value.Date && t.TransDate <= endDate.Value.Date).ToList();
+        }
+        else
+        {
+            filteredOutflowData = new List<Transaction>(outflowTransactionsData); // If no date range selected, show all
+        }
+    }
+
+    private void ClearFilter()
+    {
+        startDate = null;
+        endDate = null;
+        filteredOutflowData = new List<Transaction>(outflowTransactionsData); // Reset to all data
+    }
+}

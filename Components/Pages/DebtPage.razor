@@ -1,0 +1,332 @@
+﻿@page "/debt"
+
+@using Mero_Kharcha.Models;
+@using Mero_Kharcha.Services;
+@inject ITransactionServices TransactionServices;
+@inject IUserServices UserServices;
+@inject IDebtServices DebtServices;
+@inject NavigationManager navigationManager;
+
+<div class="debt-overview-container">
+    <h3>Debt Overview</h3>
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label">Total Debts</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Style="font-weight: bold; font-size: 28px;">@userSelectedCurrency @totalDebtAmount</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label">Cleared Debts</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Style="color: #27B74C; font-weight: bold; font-size: 28px;">@userSelectedCurrency @totalClearedAmount</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="12" md="4">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label">Pending Debts</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Style="color: #D62A20; font-weight: bold; font-size: 28px;">@userSelectedCurrency @totalPendingAmount</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+
+<div class="add-debt">
+    <h3>Add Debts (Debts)</h3>
+    <form>
+        <div>
+            <label>Title</label>
+            <input type="text" @bind="debts.DebtTitle" />
+        </div>
+        <div>
+            <label>Amount</label>
+            <input type="number" @bind="debts.DebtAmount" />
+        </div>
+        <div>
+            <label>Due Date</label>
+            <input type="date" min="2024-01-01" @bind="debts.DebtDueDate" />
+        </div>
+
+        <div>
+            <label>Source</label>
+            <input type="text" placeholder="Enter debt source" @bind="debts.DebtSource" />
+        </div>
+        <div>
+            <label>Notes:</label>
+            <textarea placeholder="Enter notes here (Optional)" @bind="debts.DebtNotes"></textarea>
+        </div>
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <p style="color: red; margin-bottom: 0; font-weight:500;">@errorMessage*</p>
+        }
+        <button type="button" class="add-debt-btn" @onclick="AddDebt">Add Debt</button>
+    </form>
+</div>
+
+
+<div class="filter">
+    <h3>All Debts</h3>
+    <input type="search" placeholder="Search debt by title name" @oninput="UpdateSearchText" @onkeydown="HandleKeyPress" />
+
+    <select @onchange="ApplySort">
+        <option value="Sortby">Sort by (Default)</option>
+        <option value="Date">Date (Old to New)</option>
+        <option value="Amount">Amount (Highest to Lowest)</option>
+    </select>
+
+    <MudButton OnClick="ToggleFilterPopover" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterList" Style="padding: 10px 0 8px 0; width: 10%;">Filter</MudButton>
+    <MudPopover @bind-Open="isPopoverOpen" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+        <MudPaper Class="p-4">
+            <MudDatePicker Label="Start Date" Margin="Margin.Normal" @bind-Date="startDate" />
+            <MudDatePicker Label="End Date" Margin="Margin.Normal" @bind-Date="endDate" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick="ApplyDateFilter">Apply Filter</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" @onclick="ClearDateFilter">Clear Filter</MudButton>
+        </MudPaper>
+    </MudPopover>
+</div>
+
+<div class="debt-table">
+    <MudPaper Elevation="2" Class="pa-3 mb-3" Style="text-align: center; border-radius: 6px; background-color: #F5F5F5;">
+        <MudText Typo="Typo.body1" Style="color: #6C757D; font-weight: 500;">
+            Available Inflow Balance
+        </MudText>
+        <MudText Typo="Typo.h5" Style="color: #27B74C; font-weight: bold; margin-top: 4px;">
+            @userSelectedCurrency @availableInflow
+        </MudText>
+        <MudText Typo="Typo.caption" Style="color: #6C757D; margin-top: 8px; display: block;">
+            Note: Pending debt amount will be deducted from this balance.
+        </MudText>
+    </MudPaper>
+
+
+    <MudSimpleTable Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                @foreach (var h in tableTitle)
+                {
+                    <th>@h</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (filteredDebtData != null && filteredDebtData.Any())
+            {
+                @foreach (var debt in filteredDebtData)
+                {
+                    <tr>
+                        <td>@debt.DebtDueDate.ToShortDateString()</td>
+                        <td>@debt.DebtTitle</td>
+                        <td>@debt.DebtAmount</td>
+                        <td>@debt.DebtSource</td>
+                        <td>@debt.DebtNotes</td>
+                        <td>@debt.DebtStatus</td>
+                        <td>
+                            @if (debt.DebtStatus == "Pending")
+                            {
+                                <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Success" OnClick="() => MarkAsCompleted(debt.DebtID)">Mark as Paid</MudButton>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5">No data available</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</div>
+
+@code {
+    string[] tableTitle = { "Due Date", "Title", "Debt Amount", "Source", "Notes", "Status", "Actions" };
+    private Debt debts = new Debt();
+    private List<Debt> debtTableData = new List<Debt>(); // Store transactions
+    private List<Debt> filteredDebtData = new List<Debt>();
+
+    private string searchText = "";
+    private string userSelectedCurrency;
+    private string selectedSortOption = "Sortby"; // Default value
+    private bool isPopoverOpen = false;
+    private string errorMessage;
+    private decimal totalDebtAmount = 0;
+    private decimal totalPendingAmount = 0;
+    private decimal totalClearedAmount = 0;
+    private decimal availableInflow = 0;
+
+
+
+
+    private DateTime? startDate = null;
+    private DateTime? endDate = null;
+
+
+    private void ToggleFilterPopover()
+    {
+        isPopoverOpen = !isPopoverOpen;
+    }
+
+    private async Task AddDebt()
+    {
+        if (string.IsNullOrEmpty(debts.DebtTitle) || string.IsNullOrEmpty(debts.DebtAmount) || string.IsNullOrEmpty(debts.DebtDueDate.ToString()) || string.IsNullOrEmpty(debts.DebtSource))
+        {
+            errorMessage = "Please fill out all the fields.";
+            return;
+        }
+        if (Convert.ToDecimal(debts.DebtAmount) <= 0)
+        {
+            errorMessage = "Amount cannot be zero or negative";
+            return;
+        }
+
+        try
+        {
+            debts.DebtStatus = "Pending";
+
+
+            await DebtServices.AddDebtAsync(debts);
+            debtTableData = (await DebtServices.RetrieveDebtAsync()).OrderByDescending(d => d.DebtID).ToList();
+            filteredDebtData = new List<Debt>(debtTableData);
+
+            totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+            totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+            totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+
+            debts = new Debt(); // Reset form
+            debts.DebtDueDate = DateTime.Today;
+            errorMessage = null; // Clear any previous error messages
+        }
+        catch (Exception ex)
+        {
+            // Handle error (e.g., show a message to the user)
+            errorMessage = $"Error while adding inflow: {ex.Message}";
+            Console.WriteLine(errorMessage); // Log for debugging
+        }
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            debts.DebtDueDate = DateTime.Today;
+            var userDetails = await UserServices.RetrieveUsersAsync();
+            userSelectedCurrency = userDetails[0].Currency;
+            totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+            totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+            totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+            availableInflow = (await TransactionServices.GetCurrentBalanceAsync()) - totalClearedAmount;
+
+            debtTableData = (await DebtServices.RetrieveDebtAsync()).OrderByDescending(d => d.DebtID).ToList();
+            filteredDebtData = new List<Debt>(debtTableData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error while retrieving the transactions: {ex.Message}");
+        }
+
+    }
+
+
+    private void HandleKeyPress(KeyboardEventArgs e) //Detects enter key pressed
+    {
+        if (e.Key == "Enter")
+        {
+            ApplySearch();
+        }
+    }
+
+    private void UpdateSearchText(ChangeEventArgs e) //Updates the search text
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ApplySearch() //Search filter method to search for transaction based on the title
+    {
+        filteredDebtData = debtTableData.Where(d => string.IsNullOrEmpty(searchText) || d.DebtTitle.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+
+
+    private void ApplySort(ChangeEventArgs e)
+    {
+        selectedSortOption = e.Value?.ToString() ?? "Sortby";
+
+        if (selectedSortOption == "Sortby")
+        {
+            // Reset to the original data without sorting
+            filteredDebtData = new List<Debt>(debtTableData);
+        }
+        else if (selectedSortOption == "Amount")
+        {
+            filteredDebtData = filteredDebtData.OrderByDescending(d => Convert.ToDecimal(d.DebtAmount)).ToList(); // Sorting by amount (highest to lowest)
+        }
+        else if (selectedSortOption == "Date")
+        {
+            filteredDebtData = filteredDebtData.OrderBy(d => d.DebtDueDate).ToList(); // Sorting by date (old to new)
+        }
+    }
+
+    private void ApplyDateFilter()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            filteredDebtData = debtTableData.Where(d => d.DebtDueDate >= startDate.Value.Date && d.DebtDueDate <= endDate.Value.Date).ToList();
+        }
+        else
+        {
+            filteredDebtData = new List<Debt>(debtTableData); // If no date range selected, show all
+        }
+    }
+
+    private void ClearDateFilter()
+    {
+        startDate = null;
+        endDate = null;
+        filteredDebtData = new List<Debt>(debtTableData); // Reset to all data
+    }
+
+    private async Task MarkAsCompleted(int debtId)
+    {
+        try
+        {
+            var debtToUpdate = debtTableData.FirstOrDefault(d => d.DebtID == debtId);
+
+            if (debtToUpdate != null)
+            {
+                if (availableInflow >= Convert.ToDecimal(debtToUpdate.DebtAmount))
+                {
+                    debtToUpdate.DebtStatus = "Cleared";
+                    await DebtServices.UpdateDebtAsync(debtToUpdate);
+                    availableInflow -= Convert.ToDecimal(debtToUpdate.DebtAmount);
+
+                    // Refresh totals
+                    totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+                    totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+                    totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+                }
+                else
+                {
+                    errorMessage = "Insufficient balance to clear the debt.";
+                }
+            }
+            else
+            {
+                errorMessage = $"Debt with ID {debtId} not found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating debt status: {ex.Message}";
+        }
+    }
+
+}

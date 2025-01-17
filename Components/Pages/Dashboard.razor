@@ -1,0 +1,403 @@
+﻿@page "/dashboard"
+
+@using Mero_Kharcha.Models;
+@using Mero_Kharcha.Services;
+@inject ITransactionServices TransactionServices;
+@inject IUserServices UserServices;
+@inject IDebtServices DebtServices;
+@inject NavigationManager navigationManager;
+
+<style>
+    /* Adjusting bar spacing */
+    .mud-chart-bar {
+    stroke-width: 50px; /* Adjust width of the bars */
+    }
+
+    .mud-charts-bar-series,
+    .mud-charts-xaxis {
+    transform: translateX(40px) scaleX(0.88);
+    }
+
+    .mud-charts-grid-line {
+    stroke: #000; /* Color of the grid lines (black in this case) */
+    stroke-width: 1px; /* Thickness of the grid lines */
+    opacity: 0.5; /* Adjust opacity to make it more visible */
+    }
+</style>
+
+<h1 class="welcome-message">Welcome, @userName</h1>
+
+
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>Dashboard Overview</h1>
+    </div>
+    <div class="dashboard-grid">
+        <div class="card">
+            <h2>Total Balance</h2>
+            <p>@userSelectedCurrency @totalBalance</p>
+        </div>
+        <div class="card">
+            <h2>Total Inflows</h2>
+            <p style="color: #27B74C">@userSelectedCurrency @totalInflowAmount</p>
+        </div>
+        <div class="card">
+            <h2>Total Outflows</h2>
+            <p style="color: #C90B00">@userSelectedCurrency @totalOutflowAmount</p>
+        </div>
+        <div class="card">
+            <h2>Total Debts</h2>
+            <p style="color: #7D7D7D">@userSelectedCurrency @totalDebtAmount</p>
+        </div>
+        <div class="card">
+            <h2>Pending Debts</h2>
+            <p style="color: #FF6347">@userSelectedCurrency @totalPendingAmount</p>
+        </div>
+        <div class="card">
+            <h2>Cleared Debts</h2>
+            <p style="color: #2D9CDB">@userSelectedCurrency @totalClearedAmount</p>
+        </div>
+    </div>
+</div>
+
+<div class="chart-container">
+    <h3>Statistics</h3>
+    <div class="chart-rows">
+        <MudChart ChartType="ChartType.Pie" InputData="@pieChartData" InputLabels="@chartLabels" Width="300px" Height="300px" Style="margin-left: 45px;" />
+        <MudChart ChartType="ChartType.Bar" ChartSeries="@barChartSeries" XAxisLabels="@chartLabels" Width="100%" Height="350px" Options="chartOptions" />
+    </div>
+</div>
+
+<div class="top-transaction-container">
+    <h3>Top 5 transaction</h3>
+    <select @onchange="ApplySort">
+        <option value="SelectTransaction">Select transaction</option>
+        <option value="HighestInflow">Inflow (Highest)</option>
+        <option value="LowestInflow">Inflow (Lowest)</option>
+        <option value="HighestOutflow">Outflow (Highest)</option>
+        <option value="LowestOutflow">Outflow (Lowest)</option>
+        <option value="HighestDebt">Debt (Highest)</option>
+        <option value="LowestDebt">Debt (Lowest)</option>
+    </select>
+</div>
+
+<div class="top-transaction-table">
+    <MudSimpleTable Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                <th>S.No</th>
+                <th>Date</th>
+                <th>Title</th>
+                <th>Amount</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (selectedTransaction == "SelectTransaction")
+            {
+                <tr>
+                    <td colspan="5">Please select a transaction</td>
+                </tr>
+            }
+            else if ((selectedTransaction?.EndsWith("Inflow") == true || selectedTransaction?.EndsWith("Outflow") == true) && filteredTransactions != null && filteredTransactions.Any())
+            {
+                int serialNo = 1;
+                @foreach (var transaction in filteredTransactions)
+                {
+                    <tr>
+                        <td>@serialNo</td>
+                        <td>@transaction.TransDate.ToShortDateString()</td>
+                        <td>@transaction.TransTitle</td>
+                        <td>@transaction.TransAmount</td>
+                        <td>@transaction.TransNote</td>
+                    </tr>
+                    serialNo++;
+                }
+            }
+            else if ((selectedTransaction == "HighestDebt" || selectedTransaction == "LowestDebt") && allDebts != null && allDebts.Any())
+            {
+                int serialNo = 1;
+                @foreach (var debt in allDebts)
+                {
+                    <tr>
+                        <td>@serialNo</td>
+                        <td>@debt.DebtDueDate.ToShortDateString()</td>
+                        <td>@debt.DebtTitle</td>
+                        <td>@debt.DebtAmount</td>
+                        <td>@debt.DebtNotes</td>
+                    </tr>
+                    serialNo++;
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5">No data available</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</div>
+
+<div class="pending-debt-container">
+    <h3>Pending Debts</h3>
+    <MudButton OnClick="OpenPopover" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterList" Style="padding: 10px 0 8px 0; width: 10%;">Filter</MudButton>
+
+    <MudPopover @bind-Open="isPopoverOpen" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+        <MudPaper Class="p-3">
+            @if (isPopoverOpen)
+            {
+                <MudDatePicker Label="Start Date" Margin="Margin.Normal" @bind-Date="startDate" />
+                <MudDatePicker Label="End Date" Margin="Margin.Normal" @bind-Date="endDate" />
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Style="margin-top: 15px; margin-right: 30px" @onclick="ApplyDateFilter">Apply Filter</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Style="margin-top: 15px;" @onclick="ClearDateFilter">Clear Filter</MudButton>
+        </MudPaper>
+    </MudPopover>
+
+</div>
+
+<div class="pending-debt-table">
+    <MudPaper Elevation="2" Class="pa-3 mb-3" Style="text-align: center; border-radius: 6px; background-color: #F5F5F5;">
+        <MudText Typo="Typo.body1" Style="color: #6C757D; font-weight: 500;">Available Inflow Balance</MudText>
+        <MudText Typo="Typo.h5" Style="color: #27B74C; font-weight: bold; margin-top: 4px;">@userSelectedCurrency @availableInflow</MudText>
+        <MudText Typo="Typo.caption" Style="color: #6C757D; margin-top: 8px; display: block;">Note: Pending debt amount will be deducted from this balance.</MudText>
+    </MudPaper>
+    <MudSimpleTable Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                <th>Due Date</th>
+                <th>Title</th>
+                <th>Amount</th>
+                <th>Source</th>
+                <th>Notes</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (filteredPendingDebts != null && filteredPendingDebts.Any())
+            {
+                @foreach (var debt in filteredPendingDebts)
+                {
+                    <tr>
+                        <td>@debt.DebtDueDate.ToShortDateString()</td>
+                        <td>@debt.DebtTitle</td>
+                        <td>@debt.DebtAmount</td>
+                        <td>@debt.DebtSource</td>
+                        <td>@debt.DebtNotes</td>
+                        <td>@debt.DebtStatus</td>
+                        <td>
+                            @if (debt.DebtStatus == "Pending")
+                            {
+                                <MudButton Variant="Variant.Filled" Size="Size.Small" Color="Color.Success" OnClick="() => MarkAsCompleted(debt.DebtID)">Mark as Paid</MudButton>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5">There are no pending debts</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</div>
+
+
+
+
+@code
+{
+    private double[] pieChartData = new double[0];
+    private List<ChartSeries> barChartSeries = new List<ChartSeries>();
+    private string[] chartLabels = { "Inflow", "Outflow", "Total Debt", "Pending Debt", "Cleared Debt" };
+
+    private List<Transaction> allInflowOutflow = new List<Transaction>(); // Store all inflow and outflow transactions
+    private List<Transaction> filteredTransactions = new List<Transaction>();
+
+    private List<Debt> allDebts = new List<Debt>();
+    private List<Debt> pendingDebts = new List<Debt>();
+    private List<Debt> filteredPendingDebts = new List<Debt>();
+
+
+
+    private string userSelectedCurrency;
+    private string userName;
+    private decimal totalBalance = 0;
+    private decimal totalInflowAmount = 0;
+    private decimal totalOutflowAmount = 0;
+    private decimal totalDebtAmount = 0;
+    private decimal totalPendingAmount = 0;
+    private decimal totalClearedAmount = 0;
+    private decimal availableInflow = 0;
+    private bool isPopoverOpen = false;
+    private DateTime? startDate = null;
+    private DateTime? endDate = null;
+    private string errorMessage;
+
+    private string selectedTransaction = "SelectTransaction"; // Default value
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userDetails = await UserServices.RetrieveUsersAsync();
+            userSelectedCurrency = userDetails[0].Currency;
+            userName = userDetails[0].UserName;
+            totalInflowAmount = await TransactionServices.GetTotalInflowAsync();
+            totalOutflowAmount = await TransactionServices.GetTotalOutflowAsync();
+            totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+            totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+            totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+            totalBalance = (totalInflowAmount - totalOutflowAmount - totalClearedAmount) + totalPendingAmount;
+            availableInflow = (await TransactionServices.GetCurrentBalanceAsync()) - totalClearedAmount;
+
+
+            allInflowOutflow = await TransactionServices.RetrieveTransactionAsync();
+            filteredTransactions = allInflowOutflow.Take(5).ToList();
+            allDebts = (await DebtServices.RetrieveDebtAsync()).Take(5).ToList();
+            pendingDebts = (await DebtServices.RetrieveDebtAsync()).Where(d => d.DebtStatus == "Pending").ToList();
+            filteredPendingDebts = new List<Debt>(pendingDebts);
+
+
+            pieChartData = new double[]
+            {
+                (double)totalInflowAmount,
+                (double)totalOutflowAmount,
+                (double)totalDebtAmount,
+                (double)totalPendingAmount,
+                (double)totalClearedAmount
+            };
+
+            barChartSeries = new List<ChartSeries>
+            {
+                new ChartSeries
+                {
+                    Name = "Transactions",
+                    Data = new double[]
+                    {
+                        (double)totalInflowAmount,
+                        (double)totalOutflowAmount,
+                        (double)totalDebtAmount,
+                        (double)totalPendingAmount,
+                        (double)totalClearedAmount
+                    }
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error while retrieving the transactions: {ex.Message}");
+        }
+    }
+
+    private void OpenPopover()
+    {
+        isPopoverOpen = !isPopoverOpen;
+    }
+
+    private void ClosePopover()
+    {
+        isPopoverOpen = false;
+    }
+
+
+
+    private void ApplySort(ChangeEventArgs e)
+    {
+        selectedTransaction = e.Value?.ToString() ?? "SelectTransaction";
+
+        if (selectedTransaction == "SelectTransaction")
+        {
+            filteredTransactions = new List<Transaction>();
+        }
+        else if (selectedTransaction == "HighestInflow")
+        {
+            filteredTransactions = allInflowOutflow.Where(t => t.TransType == "Inflow").OrderByDescending(t => Convert.ToDecimal(t.TransAmount)).Take(5).ToList();
+        }
+        else if (selectedTransaction == "LowestInflow")
+        {
+            filteredTransactions = allInflowOutflow.Where(t => t.TransType == "Inflow").OrderBy(t => Convert.ToDecimal(t.TransAmount)).Take(5).ToList();
+        }
+        else if (selectedTransaction == "HighestOutflow")
+        {
+            filteredTransactions = allInflowOutflow.Where(t => t.TransType == "Outflow").OrderByDescending(t => Convert.ToDecimal(t.TransAmount)).Take(5).ToList();
+        }
+        else if (selectedTransaction == "LowestOutflow")
+        {
+            filteredTransactions = allInflowOutflow.Where(t => t.TransType == "Outflow").OrderBy(t => Convert.ToDecimal(t.TransAmount)).Take(5).ToList();
+        }
+        else if (selectedTransaction == "HighestDebt")
+        {
+            allDebts = allDebts.OrderByDescending(t => Convert.ToDecimal(t.DebtAmount)).Take(5).ToList();
+        }
+        else if (selectedTransaction == "LowestDebt")
+        {
+            allDebts = allDebts.OrderBy(t => Convert.ToDecimal(t.DebtAmount)).Take(5).ToList();
+        }
+    }
+
+
+   private async Task MarkAsCompleted(int debtId)
+    {
+        try
+        {
+            var debtToUpdate = pendingDebts.FirstOrDefault(d => d.DebtID == debtId);
+
+            if (debtToUpdate != null)
+            {
+                if (availableInflow >= Convert.ToDecimal(debtToUpdate.DebtAmount))
+                {
+                    debtToUpdate.DebtStatus = "Cleared";
+                    await DebtServices.UpdateDebtAsync(debtToUpdate);
+                    availableInflow -= Convert.ToDecimal(debtToUpdate.DebtAmount);
+
+                    // Refresh totals
+                    totalDebtAmount = await DebtServices.GetTotalDebtAsync();
+                    totalClearedAmount = await DebtServices.GetClearedDebtAsync();
+                    totalPendingAmount = await DebtServices.GetPendingDebtAsync();
+                }
+                else
+                {
+                    errorMessage = "Insufficient balance to clear the debt.";
+                }
+            }
+            else
+            {
+                errorMessage = $"Debt with ID {debtId} not found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating debt status: {ex.Message}";
+        }
+    }
+
+
+    private void ApplyDateFilter()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            filteredPendingDebts = pendingDebts.Where(d => d.DebtDueDate >= startDate.Value.Date && d.DebtDueDate <= endDate.Value.Date).ToList();
+            ClosePopover();
+        }
+        else
+        {
+            filteredPendingDebts = new List<Debt>(pendingDebts); // If no date range selected, show all
+            ClosePopover();
+        }
+    }
+
+    private void ClearDateFilter()
+    {
+        startDate = null;
+        endDate = null;
+        ClosePopover();
+        filteredPendingDebts = new List<Debt>(pendingDebts); // Reset to all data
+    }
+}

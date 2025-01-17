@@ -1,0 +1,122 @@
+﻿.welcome-message {
+    color: #330A4B;
+    font-size: 2.5rem;
+    font-weight: 600;
+    margin-top: 20px;
+    margin-bottom: 30px;
+    text-align: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 30px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-header h1 {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+}
+
+.card {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+
+    .card h2 {
+        font-size: 18px;
+        color: #555;
+        margin-bottom: 10px;
+    }
+
+    .card p {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+
+
+.chart-container {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 30px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+}
+
+.chart-rows{
+    display: flex;
+    flex-direction: row;
+    gap: 100px;
+    padding-top: 20px;
+    justify-content: center;
+    align-items: center;
+}
+
+.top-transaction-container h3{
+    margin-bottom: 18px;
+}
+
+.top-transaction-container select {
+    border: 1px solid grey;
+    padding: 11px;
+    width: 18%;
+    border-radius: 5px;
+    margin-right: 30px;
+}
+
+.top-transaction-table, .pending-debt-table {
+    margin-top: 30px;
+}
+
+    .top-transaction-table th, .top-transaction-table td, .pending-debt-table th, .pending-debt-table td {
+        border: 1px solid lightgrey;
+        text-align: left;
+    }
+
+    .top-transaction-table th, pending-debt-table th {
+        background-color: #f4f4f4;
+        font-weight: bold;
+    }
+
+
+.pending-debt-container h3{
+    margin-top: 40px;
+    margin-bottom: 18px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

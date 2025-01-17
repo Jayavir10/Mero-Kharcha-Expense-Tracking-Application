@@ -1,0 +1,349 @@
+﻿@page "/inflow"
+
+@using Mero_Kharcha.Models;
+@using Mero_Kharcha.Services;
+@inject ITransactionServices TransactionServices;
+@inject IUserServices UserServices;
+@inject NavigationManager navigationManager;
+
+<div class="inflow-balance">
+    <MudGrid Justify="Justify.Center">
+        <MudItem xs="12" sm="6" md="4" Style="margin-top: 20px;">
+            <MudPaper Elevation="3" Class="pa-4" Style="height: 120px;">
+                <MudCardContent>
+                    <MudText Typo="Typo.body1" Class="debt-label" Align="Align.Center">Total Inflows</MudText>
+                    <MudText Typo="Typo.h5" Class="debt-value" Align="Align.Center" Style="color: #27B74C; font-weight: bold; font-size: 28px;">@userSelectedCurrency @totalInflowAmount</MudText>
+                </MudCardContent>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<div class="add-inflow">
+    <h3>Add inflow (Income)</h3>
+    <form>
+        <div>
+            <label>Title</label>
+            <input type="text" @bind="transaction.TransTitle" />
+        </div>
+        <div>
+            <label>Amount</label>
+            <input type="number" @bind="transaction.TransAmount" />
+        </div>
+        <div>
+            <label>Date</label>
+            <input type="date" @bind="transaction.TransDate" min="2024-01-01" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+        </div>
+        <div>
+            <label>Tag</label>
+            <select @bind="transaction.TransTag">
+                <option value="--">--</option>
+                <option value="Yearly">Yearly</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Food">Food</option>
+                <option value="Drinks">Drinks</option>
+                <option value="Clothes">Clothes</option>
+                <option value="Gadgets">Gadgets</option>
+                <option value="Fuel">Fuel</option>
+                <option value="Rent">Rent</option>
+                <option value="EMI">EMI</option>
+                <option value="Party">Party</option>
+                <option value="Miscellaneous">Miscellaneous</option>
+                <option value="CustomTag">Custom tag</option>
+            </select>
+        </div>
+        <div style="@(transaction.TransTag == "CustomTag" ? "display: flex; align-items: center; justify-content: space-between;" : "display:none;")">
+            <label>Custom tag</label>
+            <input type="text" @bind="customTag" placeholder="Enter custom tag" />
+        </div>
+        <div>
+            <label>Notes:</label>
+            <textarea placeholder="Enter notes here" @bind="transaction.TransNote"></textarea>
+        </div>
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <p style="color: red; margin-bottom: 0; font-weight:500;">@errorMessage*</p>
+        }
+        <button type="button" class="add-inflow-btn" @onclick="AddInflow">Add inflow</button>
+    </form>
+</div>
+
+
+<div class="filter">
+    <h3>All inflows</h3>
+    <input type="search" placeholder="Search inflows by title name" @oninput="UpdateSearchText" @onkeydown="HandleKeyPress" />
+
+    <select @onchange="ApplySort">
+        <option value="Sortby">Sort by (Default)</option>
+        <option value="Date">Date (Old to New)</option>
+        <option value="Amount">Amount (Highest to Lowest)</option>
+    </select>
+
+    <select @onchange="TagFilter">
+        <option value="TagFilter" disabled selected>Filter by tag</option>
+        <option value="None">None</option>
+        <option value="Yearly">Yearly</option>
+        <option value="Monthly">Monthly</option>
+        <option value="Food">Food</option>
+        <option value="Drinks">Drinks</option>
+        <option value="Clothes">Clothes</option>
+        <option value="Gadgets">Gadgets</option>
+        <option value="Fuel">Fuel</option>
+        <option value="Rent">Rent</option>
+        <option value="EMI">EMI</option>
+        <option value="Party">Party</option>
+        <option value="Miscellaneous">Miscellaneous</option>
+    </select>
+
+    <MudButton OnClick="ToggleFilterPopover" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FilterList" Style="padding: 10px 0 8px 0; width: 10%;">Filter</MudButton>
+    <MudPopover @bind-Open="isPopoverOpen" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+        <MudPaper Class="p-4">
+            <MudDatePicker Label="Start Date" Margin="Margin.Normal" @bind-Date="startDate" />
+            <MudDatePicker Label="End Date" Margin="Margin.Normal" @bind-Date="endDate" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick="ApplyDateFilter">Apply Filter</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" @onclick="ClearDateFilter">Clear Filter</MudButton>
+        </MudPaper>
+    </MudPopover>
+</div>
+
+<div class="inflow-table">
+    <MudSimpleTable Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                @foreach (var h in tableTitle)
+                {
+                    <th>@h</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (filteredTransactionsData != null && filteredTransactionsData.Any())
+            {
+                @foreach (var transaction in filteredTransactionsData)
+                {
+                    <tr>
+                        <td>@transaction.TransDate.ToShortDateString()</td>
+                        <td>@transaction.TransTitle</td>
+                        <td>@transaction.TransAmount</td>
+                        <td>@transaction.TransTag</td>
+                        <td>@transaction.TransNote</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5">No data available</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</div>
+
+
+@code {
+    string[] tableTitle = { "Date", "Title", "Inflow Amount", "Tag", "Notes" };
+    private Transaction transaction = new Transaction();
+    private List<Transaction> transactionsTableData = new List<Transaction>(); // Store transactions
+    private List<Transaction> filteredTransactionsData = new List<Transaction>();
+
+    private string userSelectedCurrency;
+    private decimal totalInflowAmount = 0;
+    private string searchText = "";
+    private string customTag = "";
+    private string errorMessage;
+    private bool isPopoverOpen = false;
+    private string selectedSortOption = "Sortby"; // Default value
+    private string selectedTagFilter = "TagFilter"; // Default value
+
+
+    private DateTime? startDate = null;
+    private DateTime? endDate = null;
+
+
+    private void ToggleFilterPopover()
+    {
+        isPopoverOpen = !isPopoverOpen;
+    }
+
+
+    private async Task AddInflow()
+    {
+        if (string.IsNullOrEmpty(transaction.TransTitle) || string.IsNullOrEmpty(transaction.TransAmount) || string.IsNullOrEmpty(transaction.TransDate.ToString()) || string.IsNullOrEmpty(transaction.TransTag) || transaction.TransTag == "--" || transaction.TransTag == "CustomTag" && string.IsNullOrEmpty(customTag))
+        {
+            errorMessage = "Please fill out all the fields.";
+            return;
+        }
+        if (Convert.ToDecimal(transaction.TransAmount) <= 0)
+        {
+            errorMessage = "Amount cannot be zero or negative";
+            return;
+        }
+        if (transaction.TransTag == "CustomTag" && !string.IsNullOrEmpty(customTag))
+        {
+            transaction.TransTag = customTag; // Assign custom tag to TransTag
+        }
+
+
+        try
+        {
+            transaction.TransType = "Inflow";
+
+            await TransactionServices.AddTransactionAsync(transaction);
+            transactionsTableData = (await TransactionServices.RetrieveTransactionAsync()).Where(transaction => transaction.TransType == "Inflow").OrderByDescending(transaction => transaction.TransID).ToList();
+            totalInflowAmount = transactionsTableData.Where(transaction => transaction.TransType == "Inflow").Sum(transaction => Convert.ToDecimal(transaction.TransAmount)); //Changing the total inflow balance immediately after new inflow is added
+            filteredTransactionsData = new List<Transaction>(transactionsTableData);
+            transaction = new Transaction(); // Reset form
+            customTag = "";
+            transaction.TransDate = DateTime.Today;
+            errorMessage = null; // Clear any previous error messages
+        }
+        catch (Exception ex)
+        {
+            // Handle error (e.g., show a message to the user)
+            errorMessage = $"Error while adding inflow: {ex.Message}";
+            Console.WriteLine(errorMessage); // Log for debugging
+        }
+    }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            transaction.TransDate = DateTime.Today;
+            var inflowTransactions = await TransactionServices.RetrieveTransactionAsync();
+            var userDetails = await UserServices.RetrieveUsersAsync();
+            userSelectedCurrency = userDetails[0].Currency;
+
+            transactionsTableData = inflowTransactions.Where(transaction => transaction.TransType == "Inflow").ToList(); //Update the list with  only inflow transactions.
+            totalInflowAmount = inflowTransactions.Where(transaction => transaction.TransType == "Inflow").Sum(transaction => Convert.ToDecimal(transaction.TransAmount)); //Render the total inflow balance after the app isstarted or UI is refreshed
+            transactionsTableData = (await TransactionServices.RetrieveTransactionAsync()).Where(transaction => transaction.TransType == "Inflow").OrderByDescending(transaction => transaction.TransID).ToList();
+            filteredTransactionsData = new List<Transaction>(transactionsTableData);
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error while retrieving the transactions: {ex.Message}");
+        }
+
+    }
+
+
+    //Search filter methods:
+    private void HandleKeyPress(KeyboardEventArgs e) //Detects enter key pressed
+    {
+        if (e.Key == "Enter")
+        {
+            ApplySearch();
+        }
+    }
+
+    private void UpdateSearchText(ChangeEventArgs e) //Updates the search text
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ApplySearch() //Search filter method to search for transaction based on the title
+    {
+        filteredTransactionsData = transactionsTableData.Where(t => string.IsNullOrEmpty(searchText) || t.TransTitle.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+
+
+    private void ApplySort(ChangeEventArgs e)
+    {
+        selectedSortOption = e.Value?.ToString() ?? "Sortby";
+
+        if (selectedSortOption == "Sortby")
+        {
+            // Reset to the original data without sorting
+            filteredTransactionsData = new List<Transaction>(transactionsTableData);
+        }
+        else if (selectedSortOption == "Amount")
+        {
+            filteredTransactionsData = filteredTransactionsData.OrderByDescending(t => Convert.ToDecimal(t.TransAmount)).ToList(); // Sorting by amount (highest to lowest)
+        }
+        else if (selectedSortOption == "Date")
+        {
+            filteredTransactionsData = filteredTransactionsData.OrderBy(t => t.TransDate).ToList(); // Sorting by date (old to new)
+        }
+    }
+
+    private void TagFilter(ChangeEventArgs e)
+    {
+        selectedTagFilter = e.Value?.ToString() ?? "TagFilter";
+
+        if (selectedTagFilter == "None")
+        {
+            // Reset to the original data without filtering
+            filteredTransactionsData = new List<Transaction>(transactionsTableData);
+        }
+        else if (selectedTagFilter == "Yearly")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Yearly").ToList();
+        }
+        else if (selectedTagFilter == "Monthly")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Monthly").ToList();
+        }
+        else if (selectedTagFilter == "Food")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Food").ToList();
+        }
+        else if (selectedTagFilter == "Drinks")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Drinks").ToList();
+        }
+        else if (selectedTagFilter == "Clothes")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Clothes").ToList();
+        }
+        else if (selectedTagFilter == "Gadgets")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Gadgets").ToList();
+        }
+        else if (selectedTagFilter == "Fuel")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Fuel").ToList();
+        }
+        else if (selectedTagFilter == "Rent")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Rent").ToList();
+        }
+        else if (selectedTagFilter == "EMI")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "EMI").ToList();
+        }
+        else if (selectedTagFilter == "Party")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Party").ToList();
+        }
+        else if (selectedTagFilter == "Miscellaneous")
+        {
+            filteredTransactionsData = filteredTransactionsData.Where(t => t.TransTag == "Miscellaneous").ToList();
+        }
+    }
+
+    private void ApplyDateFilter()
+    {
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            filteredTransactionsData = transactionsTableData.Where(t => t.TransDate >= startDate.Value.Date && t.TransDate <= endDate.Value.Date).ToList();
+        }
+        else
+        {
+            filteredTransactionsData = new List<Transaction>(transactionsTableData); // If no date range selected, show all
+        }
+    }
+
+    private void ClearDateFilter()
+    {
+        startDate = null;
+        endDate = null;
+        filteredTransactionsData = new List<Transaction>(transactionsTableData); // Reset to all data
+    }
+
+
+}

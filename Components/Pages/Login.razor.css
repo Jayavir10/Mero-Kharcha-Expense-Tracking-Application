@@ -1,0 +1,53 @@
+﻿h1 {
+    font-size: 30px;
+    margin-bottom: 20px;
+    margin-top: 50px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.login-container {
+    height: 40%;
+    width: 60%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    border: 1px solid grey;
+    padding: 30px;
+    margin: auto auto;
+}
+
+    .login-container div {
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+    }
+
+        .login-container div label {
+            font-size: 14px;
+            color: #494949;
+            margin-bottom: 5px;
+        }
+
+form input, form select {
+    padding: 10px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 100%;
+}
+
+.btn-signup {
+    margin-top: 15px;
+    padding: 10px 15px;
+    font-size: 18px;
+    color: white;
+    background-color: #9C2BE3;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+    .btn-signup:hover {
+        background-color: #7a1bb8;
+    }
